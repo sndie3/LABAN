@@ -1,4 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Map as OLMap, View } from 'ol';
+import TileLayer from 'ol/layer/Tile';
+import { OSM } from 'ol/source';
+import { toLonLat, fromLonLat } from 'ol/proj';
 
 const UserConsent = ({ onConsent }) => {
   const [location, setLocation] = useState(null);
@@ -7,6 +11,8 @@ const UserConsent = ({ onConsent }) => {
   const [permissionState, setPermissionState] = useState('');
   const [manualLat, setManualLat] = useState('');
   const [manualLon, setManualLon] = useState('');
+  const pickMapRef = useRef(null);
+  const pickMap = useRef(null);
 
   const isManualValid =
     manualLat !== '' && manualLon !== '' &&
@@ -41,6 +47,38 @@ const UserConsent = ({ onConsent }) => {
     );
   };
 
+  const requestIPLocation = async () => {
+    try {
+      setIsLoading(true);
+      setError('');
+      const res = await fetch('https://ipapi.co/json/');
+      if (!res.ok) throw new Error('IP location lookup failed');
+      const data = await res.json();
+      if (data && typeof data.latitude === 'number' && typeof data.longitude === 'number') {
+        setLocation({ latitude: data.latitude, longitude: data.longitude });
+        setManualLat(String(data.latitude));
+        setManualLon(String(data.longitude));
+      } else if (data && data.loc) {
+        const [latStr, lonStr] = String(data.loc).split(',');
+        const lat = Number(latStr);
+        const lon = Number(lonStr);
+        if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
+          setLocation({ latitude: lat, longitude: lon });
+          setManualLat(String(lat));
+          setManualLon(String(lon));
+        } else {
+          throw new Error('Invalid IP location format');
+        }
+      } else {
+        throw new Error('No location from IP service');
+      }
+    } catch (e) {
+      setError(e?.message || 'Unable to retrieve approximate location from IP');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
     requestLocation();
   }, []);
@@ -55,6 +93,28 @@ const UserConsent = ({ onConsent }) => {
         })
         .catch(() => {});
     }
+  }, []);
+
+  // Initialize a lightweight map for manual location selection
+  useEffect(() => {
+    if (!pickMapRef.current || pickMap.current) return;
+    pickMap.current = new OLMap({
+      target: pickMapRef.current,
+      layers: [new TileLayer({ source: new OSM() })],
+      view: new View({ center: fromLonLat([121.0, 12.0]), zoom: 5 })
+    });
+
+    pickMap.current.on('click', (evt) => {
+      const [lon, lat] = toLonLat(evt.coordinate);
+      setManualLat(String(lat.toFixed(6)));
+      setManualLon(String(lon.toFixed(6)));
+      setLocation({ latitude: Number(lat), longitude: Number(lon) });
+      setError('');
+    });
+
+    return () => {
+      if (pickMap.current) pickMap.current.setTarget(null);
+    };
   }, []);
 
   const handleConsent = () => {
@@ -113,6 +173,14 @@ const UserConsent = ({ onConsent }) => {
         <button type="button" onClick={requestLocation} className="proceed-button" style={{ maxWidth: 240 }}>
           🔁 Try Again
         </button>
+        <button type="button" onClick={requestIPLocation} className="proceed-button" style={{ maxWidth: 280 }}>
+          🌐 Use Approximate Location (IP)
+        </button>
+      </div>
+
+      <div style={{ width: '100%', maxWidth: 600, margin: '0 auto 1rem', textAlign: 'left' }}>
+        <p style={{ color: 'var(--text-light)', textAlign: 'center' }}>Or tap the map to set your location</p>
+        <div ref={pickMapRef} style={{ height: 300, borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border-light)' }}></div>
       </div>
 
       <div style={{ width: '100%', maxWidth: 480, margin: '0 auto 1rem', textAlign: 'left' }}>
