@@ -39,7 +39,18 @@ function App() {
         .from('help_requests')
         .select('*')
         .order('created_at', { ascending: false });
-      if (!error && data) setHelpRequests(data);
+      if (!error && data) {
+        // Normalize to ensure each request has a location object
+        const normalized = data.map((row) => ({
+          ...row,
+          location:
+            row.location ||
+            (typeof row.latitude === 'number' && typeof row.longitude === 'number'
+              ? { latitude: row.latitude, longitude: row.longitude }
+              : null),
+        }));
+        setHelpRequests(normalized);
+      }
     };
     load();
 
@@ -48,7 +59,18 @@ function App() {
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'help_requests' },
-        (payload) => setHelpRequests((prev) => [payload.new, ...prev])
+        (payload) =>
+          setHelpRequests((prev) => [
+            {
+              ...payload.new,
+              location:
+                payload.new.location ||
+                (typeof payload.new.latitude === 'number' && typeof payload.new.longitude === 'number'
+                  ? { latitude: payload.new.latitude, longitude: payload.new.longitude }
+                  : null),
+            },
+            ...prev,
+          ])
       )
       .subscribe();
 
@@ -90,11 +112,24 @@ function App() {
         .select('*')
         .single();
       if (!error && data) {
-        setHelpRequests((prev) => [data, ...prev]);
+        const normalized = {
+          ...data,
+          location:
+            data.location ||
+            (typeof data.latitude === 'number' && typeof data.longitude === 'number'
+              ? { latitude: data.latitude, longitude: data.longitude }
+              : null),
+        };
+        setHelpRequests((prev) => [normalized, ...prev]);
       }
     } else {
       // Fallback to local state when Supabase isn’t configured
-      const local = { id: Date.now(), timestamp: new Date().toISOString(), ...payload };
+      const local = {
+        id: Date.now(),
+        timestamp: new Date().toISOString(),
+        ...payload,
+        location: { latitude: payload.latitude, longitude: payload.longitude },
+      };
       setHelpRequests((prev) => [local, ...prev]);
     }
   };
