@@ -18,13 +18,22 @@ function haversineDistance(a, b) {
 const HelpRequestsList = ({ requests, rescuerLocation, onSelect }) => {
   const items = useMemo(() => {
     const arr = (requests || []).map((req, idx) => {
-      const distance = haversineDistance(rescuerLocation, req.location);
+      // Support both local shape { location: { latitude, longitude } }
+      // and Supabase shape { latitude, longitude }
+      const loc = req.location || {
+        latitude: req.latitude,
+        longitude: req.longitude,
+      };
+      const distance = haversineDistance(rescuerLocation, loc);
       return {
         key: req.id || idx,
-        name: req.user?.firstName ? `${req.user.firstName} ${req.user.lastName || ''}`.trim() : 'Civilian',
+        name:
+          req.user?.firstName
+            ? `${req.user.firstName} ${req.user.lastName || ''}`.trim()
+            : req.user_name || 'Civilian',
         message: req.message,
         distance,
-        timestamp: req.timestamp,
+        timestamp: req.timestamp || req.created_at,
         raw: req,
       };
     });

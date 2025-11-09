@@ -82,9 +82,13 @@ const MapComponent = ({ region, helpRequests, rescuerLocation, selectedRequest }
 
   useEffect(() => {
     routeSource.current.clear();
-    if (!rescuerLocation || !selectedRequest || !selectedRequest.location) return;
-    const { location } = selectedRequest;
-    if (typeof location.latitude !== 'number' || typeof location.longitude !== 'number') return;
+    if (!rescuerLocation || !selectedRequest) return;
+    // Support both local selectedRequest.location and Supabase fields
+    const location = selectedRequest.location || {
+      latitude: selectedRequest.latitude,
+      longitude: selectedRequest.longitude,
+    };
+    if (!location || typeof location.latitude !== 'number' || typeof location.longitude !== 'number') return;
     if (typeof rescuerLocation.latitude !== 'number' || typeof rescuerLocation.longitude !== 'number') return;
 
     const start = fromLonLat([rescuerLocation.longitude, rescuerLocation.latitude]);
