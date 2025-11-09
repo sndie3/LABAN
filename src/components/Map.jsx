@@ -58,12 +58,16 @@ const MapComponent = ({ region, helpRequests, rescuerLocation, selectedRequest }
   useEffect(() => {
     vectorSource.current.clear();
     helpRequests.forEach((request) => {
-      const { location } = request;
-      if (!location || typeof location.latitude !== 'number' || typeof location.longitude !== 'number') {
-        return;
-      }
+      // Support both local shape { location: { latitude, longitude } }
+      // and Supabase shape { latitude, longitude }
+      const loc = request.location || {
+        latitude: request.latitude,
+        longitude: request.longitude,
+      };
+      if (!loc || typeof loc.latitude !== 'number' || typeof loc.longitude !== 'number') return;
+
       const marker = new Feature({
-        geometry: new Point(fromLonLat([location.longitude, location.latitude])),
+        geometry: new Point(fromLonLat([loc.longitude, loc.latitude])),
       });
       const isSelected = selectedRequest && selectedRequest.id === request.id;
       const baseIcon = new Icon({
