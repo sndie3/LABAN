@@ -182,37 +182,42 @@ function App() {
         <RoleSelection onRoleSelect={handleSelectRole} />
       ) : (
         <div className="main-content">
-          <div className="left-panel">
-            <div className="welcome-panel">
-              <h2>Welcome, {user.firstName}! 🎉</h2>
-              <p>
-                You're now connected to the LABAN network in {region}
-              </p>
-            </div>
-            
-            {userRole === 'Civilian' && (
+          {userRole === 'Civilian' ? (
+            <div style={{ width: '100%' }}>
+              <div className="welcome-panel">
+                <h2>Welcome, {user.firstName}! 🎉</h2>
+                <p>
+                  You're now connected to the LABAN network in {region}
+                </p>
+              </div>
               <NeedHelp onSubmitRequest={handleHelpRequest} />
-            )}
-            {userRole === 'Rescuer' && (
-              <HelpRequestsList
-                requests={helpRequests.filter((r) => (r.region || (r.location?.latitude != null ? getRegionFromCoordinates(Number(r.location.latitude)) : null)) === region)}
-                rescuerLocation={location}
-                onSelect={(req) => setSelectedRequest(req)}
-              />
-            )}
-          </div>
-          
-          {userRole === 'Rescuer' && (
-            <div className="right-panel">
-              <div className="map-container">
-                <MapComponent
-                  region={region}
-                  helpRequests={helpRequests.filter((r) => (r.region || (r.location?.latitude != null ? getRegionFromCoordinates(Number(r.location.latitude)) : null)) === region)}
+            </div>
+          ) : (
+            <>
+              <div className="left-panel">
+                <div className="welcome-panel">
+                  <h2>Welcome, {user.firstName}! 🎉</h2>
+                  <p>
+                    You're now connected to the LABAN network in {region}
+                  </p>
+                </div>
+                <HelpRequestsList
+                  requests={helpRequests.filter((r) => (r.region || (r.location?.latitude != null ? getRegionFromCoordinates(Number(r.location.latitude)) : null)) === region)}
                   rescuerLocation={location}
-                  selectedRequest={selectedRequest}
+                  onSelect={(req) => setSelectedRequest(req)}
                 />
               </div>
-            </div>
+              <div className="right-panel">
+                <div className="map-container">
+                  <MapComponent
+                    region={region}
+                    helpRequests={helpRequests.filter((r) => (r.region || (r.location?.latitude != null ? getRegionFromCoordinates(Number(r.location.latitude)) : null)) === region)}
+                    rescuerLocation={location}
+                    selectedRequest={selectedRequest}
+                  />
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}
