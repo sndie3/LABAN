@@ -521,6 +521,15 @@ body {
   flex: 1;
 }
 
+/* Map Picker (Consent) */
+.map-picker {
+  height: 300px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border-light);
+  background: #fff;
+}
+
 /* Ensure list and welcome cards don’t constrain width inside left-panel */
 .left-panel .welcome-panel,
 .left-panel .need-help-container {
@@ -741,6 +750,24 @@ body {
     min-height: max(50vh, 400px);
     width: min(98vw, 500px);
   }
+
+  /* Phone-specific tightening to avoid clipped corners/overflow on the consent card */
+  .user-consent-container {
+    width: calc(100% - 2rem);
+    max-width: 420px;
+    border-radius: 16px;
+    padding: 1rem;
+    margin: 0.5rem auto;
+    box-shadow: var(--shadow-lg);
+  }
+  .user-consent-container p,
+  .user-consent-container h2 {
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+  }
+  .user-consent-container * {
+    max-width: 100%;
+  }
   
   .welcome-panel {
     padding: 1.25rem;
@@ -768,4 +795,70 @@ body {
     min-height: 300px;
     height: 35vh;
   }
+}
+
+/* Small phones in landscape: ensure usable map and content spacing */
+@media (max-width: 480px) and (orientation: landscape) {
+  .main-content {
+    gap: 0.75rem;
+    padding: 0 0.5rem;
+  }
+  .role-selection-container,
+  .user-consent-container,
+  .need-help-container {
+    min-height: auto;
+    padding: 1rem;
+    margin: 0.25rem;
+  }
+  .map-container {
+    height: 42vh;
+    min-height: 240px;
+  }
+  .map-picker {
+    height: 200px;
+  }
+}
+
+/* Ultra-small devices */
+@media (max-width: 360px) {
+  .App {
+    padding: 0.75rem;
+  }
+  .role-selection-container,
+  .user-consent-container,
+  .need-help-container {
+    padding: 1rem;
+    margin: 0.25rem;
+    min-height: max(50vh, 360px);
+    width: 98vw;
+  }
+  .map-container {
+    min-height: 260px;
+    height: 32vh;
+  }
+  .map-picker {
+    height: 220px;
+  }
+  .role-title,
+  .role-description,
+  .welcome-panel p {
+    font-size: 0.95rem;
+  }
+}
+
+/* Large screens */
+@media (min-width: 1280px) {
+  .app-header { max-width: 1000px; }
+  .role-selection-container,
+  .user-consent-container,
+  .need-help-container { width: min(85vw, 1000px); }
+  .map-container { height: 78vh; min-height: 560px; }
+}
+
+/* Very large screens */
+@media (min-width: 1536px) {
+  .App { padding: 2rem 3rem; }
+  .main-content { gap: 1.5rem; }
+  .left-panel { flex: 0 0 480px; }
+  .map-container { height: 80vh; min-height: 620px; }
 }

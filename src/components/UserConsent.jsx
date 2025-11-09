@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import 'ol/ol.css';
 import { Map as OLMap, View } from 'ol';
 import TileLayer from 'ol/layer/Tile';
 import { OSM } from 'ol/source';
@@ -51,29 +52,71 @@ const UserConsent = ({ onConsent }) => {
     try {
       setIsLoading(true);
       setError('');
-      const res = await fetch('https://ipapi.co/json/');
-      if (!res.ok) throw new Error('IP location lookup failed');
-      const data = await res.json();
-      if (data && typeof data.latitude === 'number' && typeof data.longitude === 'number') {
-        setLocation({ latitude: data.latitude, longitude: data.longitude });
-        setManualLat(String(data.latitude));
-        setManualLon(String(data.longitude));
-      } else if (data && data.loc) {
-        const [latStr, lonStr] = String(data.loc).split(',');
-        const lat = Number(latStr);
-        const lon = Number(lonStr);
-        if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
-          setLocation({ latitude: lat, longitude: lon });
-          setManualLat(String(lat));
-          setManualLon(String(lon));
-        } else {
-          throw new Error('Invalid IP location format');
+
+      const fetchWithTimeout = (url, ms = 5000) => {
+        const ctrl = new AbortController();
+        const id = setTimeout(() => ctrl.abort(), ms);
+        return fetch(url, { signal: ctrl.signal, mode: 'cors' })
+          .finally(() => clearTimeout(id));
+      };
+
+      const tryIpinfo = async () => {
+        const res = await fetchWithTimeout('https://ipinfo.io/json');
+        if (!res.ok) throw new Error('ipinfo failed');
+        const data = await res.json();
+        if (data && data.loc) {
+          const [latStr, lonStr] = String(data.loc).split(',');
+          const lat = Number(latStr);
+          const lon = Number(lonStr);
+          if (!Number.isNaN(lat) && !Number.isNaN(lon)) return { lat, lon };
         }
-      } else {
-        throw new Error('No location from IP service');
+        throw new Error('ipinfo no coords');
+      };
+
+      const tryIpwho = async () => {
+        const res = await fetchWithTimeout('https://ipwho.is/');
+        if (!res.ok) throw new Error('ipwho.is failed');
+        const data = await res.json();
+        if (data && data.success && typeof data.latitude === 'number' && typeof data.longitude === 'number') {
+          return { lat: data.latitude, lon: data.longitude };
+        }
+        throw new Error('ipwho.is no coords');
+      };
+
+      const tryIpapi = async () => {
+        const res = await fetchWithTimeout('https://ipapi.co/json/');
+        if (!res.ok) throw new Error('ipapi.co failed');
+        const data = await res.json();
+        if (typeof data.latitude === 'number' && typeof data.longitude === 'number') {
+          return { lat: data.latitude, lon: data.longitude };
+        }
+        if (data && data.loc) {
+          const [latStr, lonStr] = String(data.loc).split(',');
+          const lat = Number(latStr);
+          const lon = Number(lonStr);
+          if (!Number.isNaN(lat) && !Number.isNaN(lon)) return { lat, lon };
+        }
+        throw new Error('ipapi.co no coords');
+      };
+
+      let coords = null;
+      const providers = [tryIpinfo, tryIpwho, tryIpapi];
+      for (const p of providers) {
+        try {
+          coords = await p();
+          if (coords) break;
+        } catch (_) {
+          // continue to next provider
+        }
       }
+
+      if (!coords) throw new Error('All IP providers failed or blocked by CORS');
+
+      setLocation({ latitude: coords.lat, longitude: coords.lon });
+      setManualLat(String(coords.lat));
+      setManualLon(String(coords.lon));
     } catch (e) {
-      setError(e?.message || 'Unable to retrieve approximate location from IP');
+      setError('Unable to retrieve approximate location (CORS or network). Please use the map picker below.');
     } finally {
       setIsLoading(false);
     }
@@ -180,7 +223,7 @@ const UserConsent = ({ onConsent }) => {
 
       <div style={{ width: '100%', maxWidth: 600, margin: '0 auto 1rem', textAlign: 'left' }}>
         <p style={{ color: 'var(--text-light)', textAlign: 'center' }}>Or tap the map to set your location</p>
-        <div ref={pickMapRef} style={{ height: 300, borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border-light)' }}></div>
+        <div ref={pickMapRef} className="map-picker"></div>
       </div>
 
       <div style={{ width: '100%', maxWidth: 480, margin: '0 auto 1rem', textAlign: 'left' }}>
