@@ -40,15 +40,16 @@ function App() {
         .select('*')
         .order('created_at', { ascending: false });
       if (!error && data) {
-        // Normalize to ensure each request has a location object
-        const normalized = data.map((row) => ({
-          ...row,
-          location:
-            row.location ||
-            (typeof row.latitude === 'number' && typeof row.longitude === 'number'
-              ? { latitude: row.latitude, longitude: row.longitude }
-              : null),
-        }));
+        // Normalize: coerce latitude/longitude (which may be strings) to numbers
+        const normalized = data.map((row) => {
+          const lat = Number(row.latitude);
+          const lon = Number(row.longitude);
+          const hasCoords = !Number.isNaN(lat) && !Number.isNaN(lon);
+          return {
+            ...row,
+            location: row.location || (hasCoords ? { latitude: lat, longitude: lon } : null),
+          };
+        });
         setHelpRequests(normalized);
       }
     };
@@ -60,17 +61,18 @@ function App() {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'help_requests' },
         (payload) =>
-          setHelpRequests((prev) => [
-            {
-              ...payload.new,
-              location:
-                payload.new.location ||
-                (typeof payload.new.latitude === 'number' && typeof payload.new.longitude === 'number'
-                  ? { latitude: payload.new.latitude, longitude: payload.new.longitude }
-                  : null),
-            },
-            ...prev,
-          ])
+          setHelpRequests((prev) => {
+            const lat = Number(payload.new.latitude);
+            const lon = Number(payload.new.longitude);
+            const hasCoords = !Number.isNaN(lat) && !Number.isNaN(lon);
+            return [
+              {
+                ...payload.new,
+                location: payload.new.location || (hasCoords ? { latitude: lat, longitude: lon } : null),
+              },
+              ...prev,
+            ];
+          })
       )
       .subscribe();
 
@@ -112,13 +114,12 @@ function App() {
         .select('*')
         .single();
       if (!error && data) {
+        const lat = Number(data.latitude);
+        const lon = Number(data.longitude);
+        const hasCoords = !Number.isNaN(lat) && !Number.isNaN(lon);
         const normalized = {
           ...data,
-          location:
-            data.location ||
-            (typeof data.latitude === 'number' && typeof data.longitude === 'number'
-              ? { latitude: data.latitude, longitude: data.longitude }
-              : null),
+          location: data.location || (hasCoords ? { latitude: lat, longitude: lon } : null),
         };
         setHelpRequests((prev) => [normalized, ...prev]);
       }

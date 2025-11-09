@@ -69,7 +69,16 @@ const HelpRequestsList = ({ requests, rescuerLocation, onSelect }) => {
             <button
               key={it.key}
               type="button"
-              onClick={() => onSelect && onSelect(it.raw)}
+              onClick={() => {
+                if (!onSelect) return;
+                const lat = Number(it.raw.latitude);
+                const lon = Number(it.raw.longitude);
+                const hasCoords = !Number.isNaN(lat) && !Number.isNaN(lon);
+                onSelect({
+                  ...it.raw,
+                  location: it.raw.location || (hasCoords ? { latitude: lat, longitude: lon } : null),
+                });
+              }}
               className="quick-message-btn"
               style={{ justifyContent: 'space-between', padding: '0.75rem 1rem' }}
             >

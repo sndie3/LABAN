@@ -86,15 +86,17 @@ const MapComponent = ({ region, helpRequests, rescuerLocation, selectedRequest }
     }
     helpRequests.forEach((request) => {
       // Support both local shape { location: { latitude, longitude } }
-      // and Supabase shape { latitude, longitude }
-      const loc = request.location || {
+      // and Supabase shape { latitude, longitude } (possibly as strings)
+      const locRaw = request.location || {
         latitude: request.latitude,
         longitude: request.longitude,
       };
-      if (!loc || typeof loc.latitude !== 'number' || typeof loc.longitude !== 'number') return;
+      const lat = Number(locRaw?.latitude);
+      const lon = Number(locRaw?.longitude);
+      if (Number.isNaN(lat) || Number.isNaN(lon)) return;
 
       const marker = new Feature({
-        geometry: new Point(fromLonLat([loc.longitude, loc.latitude])),
+        geometry: new Point(fromLonLat([lon, lat])),
       });
       const isSelected = selectedRequest && selectedRequest.id === request.id;
       const baseIcon = new Icon({
@@ -130,27 +132,55 @@ const MapComponent = ({ region, helpRequests, rescuerLocation, selectedRequest }
     }
   }, [helpRequests, selectedRequest, rescuerLocation]);
 
+  // Center on the selected request even if rescuer location is unavailable
   useEffect(() => {
-    routeSource.current.clear();
-    if (!rescuerLocation || !selectedRequest) return;
-    // Support both local selectedRequest.location and Supabase fields
-    const location = selectedRequest.location || {
+    if (!map.current || !selectedRequest) return;
+    if (rescuerLocation &&
+        typeof rescuerLocation.latitude === 'number' &&
+        typeof rescuerLocation.longitude === 'number') {
+      // When rescuer location exists, the routing effect below will handle centering
+      return;
+    }
+    const loc = selectedRequest.location || {
       latitude: selectedRequest.latitude,
       longitude: selectedRequest.longitude,
     };
-    if (!location || typeof location.latitude !== 'number' || typeof location.longitude !== 'number') return;
-    if (typeof rescuerLocation.latitude !== 'number' || typeof rescuerLocation.longitude !== 'number') return;
+    if (!loc || typeof loc.latitude !== 'number' || typeof loc.longitude !== 'number') return;
+    const end = fromLonLat([Number(loc.longitude), Number(loc.latitude)]);
+    map.current.getView().animate({ center: end, zoom: 13, duration: 300 });
+  }, [selectedRequest, rescuerLocation]);
 
-    const start = fromLonLat([rescuerLocation.longitude, rescuerLocation.latitude]);
-    const end = fromLonLat([location.longitude, location.latitude]);
-    const line = new LineString([start, end]);
-    const feature = new Feature({ geometry: line });
-    feature.setStyle(
-      new Style({
-        stroke: new Stroke({ color: 'rgba(59,130,246,0.9)', width: 3 }),
-      })
-    );
-    routeSource.current.addFeature(feature);
+  useEffect(() => {
+    routeSource.current.clear();
+    if (!selectedRequest) return;
+    // Support both local selectedRequest.location and Supabase fields
+    const locationRaw = selectedRequest.location || {
+      latitude: selectedRequest.latitude,
+      longitude: selectedRequest.longitude,
+    };
+    const endLat = Number(locationRaw?.latitude);
+    const endLon = Number(locationRaw?.longitude);
+    if (Number.isNaN(endLat) || Number.isNaN(endLon)) return;
+
+    let startCoord = null;
+    if (
+      rescuerLocation &&
+      !Number.isNaN(Number(rescuerLocation.latitude)) &&
+      !Number.isNaN(Number(rescuerLocation.longitude))
+    ) {
+      startCoord = fromLonLat([Number(rescuerLocation.longitude), Number(rescuerLocation.latitude)]);
+    }
+    const end = fromLonLat([endLon, endLat]);
+    if (startCoord) {
+      const line = new LineString([startCoord, end]);
+      const feature = new Feature({ geometry: line });
+      feature.setStyle(
+        new Style({
+          stroke: new Stroke({ color: 'rgba(59,130,246,0.9)', width: 3 }),
+        })
+      );
+      routeSource.current.addFeature(feature);
+    }
 
     if (map.current) {
       map.current.getView().setCenter(end);
