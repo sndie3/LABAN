@@ -105,7 +105,7 @@ const UserConsent = ({ onConsent }) => {
         try {
           coords = await p();
           if (coords) break;
-        } catch (_) {
+        } catch {
           // continue to next provider
         }
       }
@@ -115,7 +115,7 @@ const UserConsent = ({ onConsent }) => {
       setLocation({ latitude: coords.lat, longitude: coords.lon });
       setManualLat(String(coords.lat));
       setManualLon(String(coords.lon));
-    } catch (e) {
+    } catch {
       setError('Unable to retrieve approximate location (CORS or network). Please use the map picker below.');
     } finally {
       setIsLoading(false);
