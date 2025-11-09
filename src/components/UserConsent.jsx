@@ -15,9 +15,15 @@ const UserConsent = ({ onConsent }) => {
           });
           setIsLoading(false);
         },
-        () => {
-          setError('Unable to get your location');
+        (err) => {
+          const msg = err?.message || 'Unable to get your location';
+          setError(msg);
           setIsLoading(false);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0,
         }
       );
     } else {

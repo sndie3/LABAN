@@ -31,3 +31,23 @@ create policy "Public insert help_requests"
 
 -- Realtime configuration (Supabase listens automatically on tables)
 -- No extra SQL is required for realtime.
+
+-- Secure trigger function to maintain updated_at and fix mutable search_path
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+-- Ensure trigger exists and uses the secured function
+drop trigger if exists set_updated_at on public.help_requests;
+create trigger set_updated_at
+before update on public.help_requests
+for each row
+execute function public.set_updated_at();

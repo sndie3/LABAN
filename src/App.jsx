@@ -45,9 +45,11 @@ function App() {
           const lat = Number(row.latitude);
           const lon = Number(row.longitude);
           const hasCoords = !Number.isNaN(lat) && !Number.isNaN(lon);
+          const rowRegion = row.region || (hasCoords ? getRegionFromCoordinates(lat) : null);
           return {
             ...row,
             location: row.location || (hasCoords ? { latitude: lat, longitude: lon } : null),
+            region: rowRegion,
           };
         });
         setHelpRequests(normalized);
@@ -86,6 +88,32 @@ function App() {
     setConsent(true);
   };
 
+  // Start live tracking after consent: updates location continuously
+  useEffect(() => {
+    if (!consent || !navigator.geolocation) return;
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        setLocation({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        });
+      },
+      (err) => {
+        console.warn('Geolocation watch error:', err?.message || err);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      }
+    );
+    return () => {
+      try {
+        navigator.geolocation.clearWatch(watchId);
+      } catch {}
+    };
+  }, [consent]);
+
   const handleNameSubmit = (userData) => {
     setUser(userData);
   };
@@ -120,6 +148,7 @@ function App() {
         const normalized = {
           ...data,
           location: data.location || (hasCoords ? { latitude: lat, longitude: lon } : null),
+          region: data.region || (hasCoords ? getRegionFromCoordinates(lat) : region),
         };
         setHelpRequests((prev) => [normalized, ...prev]);
       }
@@ -166,7 +195,7 @@ function App() {
             )}
             {userRole === 'Rescuer' && (
               <HelpRequestsList
-                requests={helpRequests}
+                requests={helpRequests.filter((r) => (r.region || (r.location?.latitude != null ? getRegionFromCoordinates(Number(r.location.latitude)) : null)) === region)}
                 rescuerLocation={location}
                 onSelect={(req) => setSelectedRequest(req)}
               />
@@ -178,7 +207,7 @@ function App() {
               <div className="map-container">
                 <MapComponent
                   region={region}
-                  helpRequests={helpRequests}
+                  helpRequests={helpRequests.filter((r) => (r.region || (r.location?.latitude != null ? getRegionFromCoordinates(Number(r.location.latitude)) : null)) === region)}
                   rescuerLocation={location}
                   selectedRequest={selectedRequest}
                 />
