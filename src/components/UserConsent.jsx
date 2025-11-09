@@ -4,36 +4,67 @@ const UserConsent = ({ onConsent }) => {
   const [location, setLocation] = useState(null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [permissionState, setPermissionState] = useState('');
+  const [manualLat, setManualLat] = useState('');
+  const [manualLon, setManualLon] = useState('');
 
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setLocation({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          });
-          setIsLoading(false);
-        },
-        (err) => {
-          const msg = err?.message || 'Unable to get your location';
-          setError(msg);
-          setIsLoading(false);
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0,
-        }
-      );
-    } else {
+  const isManualValid =
+    manualLat !== '' && manualLon !== '' &&
+    !Number.isNaN(Number(manualLat)) && !Number.isNaN(Number(manualLon));
+
+  const requestLocation = () => {
+    if (!navigator.geolocation) {
       setError('Geolocation is not supported by this browser.');
       setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+        setError('');
+        setIsLoading(false);
+      },
+      (err) => {
+        const msg = err?.message || 'Unable to get your location';
+        setError(msg);
+        setIsLoading(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0,
+      }
+    );
+  };
+
+  useEffect(() => {
+    requestLocation();
+  }, []);
+
+  useEffect(() => {
+    if (navigator.permissions?.query) {
+      navigator.permissions
+        .query({ name: 'geolocation' })
+        .then((p) => {
+          setPermissionState(p.state);
+          p.onchange = () => setPermissionState(p.state);
+        })
+        .catch(() => {});
     }
   }, []);
 
   const handleConsent = () => {
-    onConsent(location);
+    if (location) {
+      onConsent(location);
+    } else if (isManualValid) {
+      onConsent({ latitude: Number(manualLat), longitude: Number(manualLon) });
+    } else {
+      setError('Location not available. Please enable location or enter coordinates.');
+    }
   };
 
   return (
@@ -70,9 +101,54 @@ const UserConsent = ({ onConsent }) => {
         </div>
       )}
       
+      {permissionState && (
+        <p style={{ color: 'var(--text-light)', fontSize: '0.9rem' }}>
+          Location permission: {permissionState}. If denied, enable location access in your browser settings and try again.
+        </p>
+      )}
+
       {error && <div className="error">{error}</div>}
+
+      <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', marginBottom: '1rem' }}>
+        <button type="button" onClick={requestLocation} className="proceed-button" style={{ maxWidth: 240 }}>
+          🔁 Try Again
+        </button>
+      </div>
+
+      <div style={{ width: '100%', maxWidth: 480, margin: '0 auto 1rem', textAlign: 'left' }}>
+        <p style={{ color: 'var(--text-light)', textAlign: 'center' }}>Or enter your location manually</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          <input
+            type="text"
+            placeholder="Latitude"
+            value={manualLat}
+            onChange={(e) => setManualLat(e.target.value)}
+            style={{ padding: '0.75rem', borderRadius: 8, border: '1px solid var(--border-light)' }}
+          />
+          <input
+            type="text"
+            placeholder="Longitude"
+            value={manualLon}
+            onChange={(e) => setManualLon(e.target.value)}
+            style={{ padding: '0.75rem', borderRadius: 8, border: '1px solid var(--border-light)' }}
+          />
+        </div>
+        {isManualValid ? (
+          <p style={{ color: 'var(--success-green)', fontSize: '0.85rem', marginTop: '0.5rem', textAlign: 'center' }}>
+            Manual coordinates look valid.
+          </p>
+        ) : (
+          <p style={{ color: 'var(--text-light)', fontSize: '0.85rem', marginTop: '0.5rem', textAlign: 'center' }}>
+            Format example: Latitude 10.3157, Longitude 123.8854
+          </p>
+        )}
+      </div>
       
-      <button onClick={handleConsent} className="proceed-button" disabled={isLoading}>
+      <button
+        onClick={handleConsent}
+        className="proceed-button"
+        disabled={isLoading || (!location && !isManualValid)}
+      >
         {isLoading ? 'Getting Location...' : '✅ Continue to Safety'}
       </button>
       
