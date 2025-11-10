@@ -1,16 +1,68 @@
-# React + Vite
+# LABAN — Disaster Response & Rescue Coordination Platform
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+LABAN connects civilians and rescuers during emergencies for faster, safer disaster response. It provides quick alerting, a live map of requests, and simple tools to triage and coordinate help.
 
-Currently, two official plugins are available:
+## Features
+- Civilian and Rescuer roles with a guided onboarding flow.
+- Need Help form with quick messages, optional photo upload, and vehicle accessibility tags.
+- Rescue Requests list with distance indicators and photo badges.
+- Interactive map with markers, selection, and a photo overlay on selected requests.
+- Water Level widget summarizing nearby flooded segments from crowdsourced reports.
+- Responsive design with a sticky left panel on desktop and improved keyboard focus states.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Requirements
+- Node.js `>=18` and npm.
+- A Supabase project with `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
 
-## React Compiler
+## Setup
+- Clone the repo and install dependencies:
+  - `npm install`
+- Create an environment file at the project root:
+  - `./.env.local`
+  - Add the following variables:
+    - `VITE_SUPABASE_URL="https://YOUR_PROJECT_ID.supabase.co"`
+    - `VITE_SUPABASE_ANON_KEY="YOUR_ANON_KEY"`
+- Start the dev server:
+  - `npm run dev`
+  - Open `http://localhost:5173/`
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Note: Vite reads env vars at startup; if you change `.env.local`, restart the dev server.
 
-## Expanding the ESLint configuration
+## Supabase Configuration
+- This app uses the Supabase JS client to read/write help requests and road reports.
+- Ensure your tables contain the basic fields used by the UI, for example:
+  - `help_requests`: `id`, `user_name` or `user` object, `message`, `latitude`, `longitude`, `image_url`, `access_vehicles` (text array), `created_at`.
+  - `road_reports`: `latitude`, `longitude`, `severity`, `created_at`.
+- If you maintain SQL schema files, place them in a separate repo or remove `supabase/` from `.gitignore` to version them here.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Scripts
+- `npm run dev` — start Vite dev server.
+- `npm run build` — production build.
+- `npm run preview` — preview the production build.
+- `npm run lint` — run ESLint.
+
+## Environment & Secrets
+- Do not commit secrets. The repo ignores:
+  - `.env.local`
+  - `.supabase/*` (Supabase CLI local artifacts)
+  - `supabase/` (ignored by default — remove from `.gitignore` if you want to version SQL).
+
+## Troubleshooting
+- Map or list is empty:
+  - Verify `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set and correct.
+  - Restart `npm run dev` after changing `.env.local`.
+- Supabase client is `null`:
+  - Ensure both env vars are present; the client initializes only when both are set.
+- Geolocation or consent issues:
+  - Allow location in your browser and try again.
+
+## Development Notes
+- The desktop layout uses a sticky left panel with its own scroll to keep the list visible while exploring the map.
+- Mobile disables sticky for a natural flow.
+- Buttons and interactive elements have improved `:focus-visible` styles for accessibility.
+
+## Credits
+- Developed by: SG
+
+## License
+- Internal project. Do not distribute without permission.
