@@ -58,9 +58,9 @@ const HelpRequestsList = ({ requests, rescuerLocation, onSelect }) => {
           style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: '0.75rem',
+            gap: '1rem',
             marginTop: '1rem',
-            maxHeight: '420px',
+            maxHeight: '60vh',
             overflowY: 'auto',
             paddingRight: '0.25rem',
           }}
@@ -80,11 +80,23 @@ const HelpRequestsList = ({ requests, rescuerLocation, onSelect }) => {
                 });
               }}
               className="quick-message-btn"
-              style={{ justifyContent: 'space-between', padding: '0.75rem 1rem' }}
+              style={{ justifyContent: 'space-between', padding: '1rem 1.25rem', borderRadius: 14 }}
             >
-              <div style={{ textAlign: 'left' }}>
+              <div style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {it.raw?.image_url ? (
+                  <span title="Includes photo" style={{ fontSize: '1.1rem' }}>📷</span>
+                ) : null}
                 <div style={{ fontWeight: 700, color: 'var(--primary-blue)' }}>{it.name}</div>
-                <div style={{ fontSize: '0.9rem', opacity: 0.9 }}>{it.message}</div>
+                <div style={{ fontSize: '0.95rem', opacity: 0.9 }}>{it.message}</div>
+                {Array.isArray(it.raw?.access_vehicles) && it.raw.access_vehicles.length > 0 ? (
+                  <div style={{ display: 'inline-flex', gap: '0.3rem', marginLeft: '0.5rem' }}>
+                    {it.raw.access_vehicles.map((v, i) => (
+                      <span key={`${v}-${i}`} style={{ fontSize: '0.75rem', background: 'rgba(59,130,246,0.12)', color: '#1d4ed8', border: '1px solid rgba(59,130,246,0.25)', borderRadius: 6, padding: '0.15rem 0.35rem' }}>
+                        {v}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
               </div>
               <div style={{ fontSize: '0.85rem', color: 'var(--text-light)' }}>
                 {it.distance != null ? `${(it.distance / 1000).toFixed(1)} km` : '—'}

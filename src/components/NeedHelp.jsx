@@ -1,17 +1,48 @@
 import React, { useState } from 'react';
+import supabase from '../lib/supabaseClient';
 
 const NeedHelp = ({ onSubmitRequest }) => {
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState('');
+  const [uploadError, setUploadError] = useState('');
+  const [accessVehicles, setAccessVehicles] = useState([]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (message.trim()) {
       setIsSubmitting(true);
-      
-      onSubmitRequest(message);
+      setUploadError('');
+
+      let imageUrl = null;
+      if (imageFile && supabase) {
+        try {
+          const fileExt = imageFile.name.split('.').pop();
+          const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt || 'jpg'}`;
+          const filePath = `requests/${fileName}`;
+          const { error: upErr } = await supabase.storage.from('request-images').upload(filePath, imageFile, {
+            cacheControl: '3600',
+            upsert: false,
+            contentType: imageFile.type || 'image/jpeg',
+          });
+          if (!upErr) {
+            const { data: pub } = supabase.storage.from('request-images').getPublicUrl(filePath);
+            imageUrl = pub?.publicUrl || null;
+          } else {
+            setUploadError('Image upload failed. Sending without photo.');
+          }
+        } catch {
+          setUploadError('Image upload failed. Sending without photo.');
+        }
+      }
+
+      onSubmitRequest({ message, imageUrl, accessVehicles });
       setMessage('');
-      
+      setImageFile(null);
+      setImagePreview('');
+      setAccessVehicles([]);
+
       setTimeout(() => {
         setIsSubmitting(false);
         alert('🚨 Help request sent! Rescuers in your area have been notified and will respond shortly.');
@@ -38,6 +69,46 @@ const NeedHelp = ({ onSubmitRequest }) => {
         }}>
           🆘
         </div>
+        
+        <div style={{ marginBottom: '1.5rem' }}>
+          <label style={{ 
+            display: 'block', 
+            marginBottom: '0.5rem', 
+            fontWeight: '600',
+            color: 'var(--text-dark)'
+          }}>
+            What vehicles can enter your area? (select all that apply)
+          </label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+            {[
+              { key: 'car', label: 'Car' },
+              { key: 'motorcycle', label: 'Motorcycle' },
+              { key: 'foot', label: 'On Foot' },
+              { key: 'boat', label: 'Boat' },
+              { key: 'truck', label: 'Truck' },
+            ].map((opt) => {
+              const checked = accessVehicles.includes(opt.key);
+              return (
+                <label key={opt.key} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', background: 'rgba(255,255,255,0.7)', border: '1px solid var(--border-light)', borderRadius: 8, padding: '0.35rem 0.6rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => {
+                      const next = e.target.checked
+                        ? [...accessVehicles, opt.key]
+                        : accessVehicles.filter((v) => v !== opt.key);
+                      setAccessVehicles(next);
+                    }}
+                  />
+                  <span>{opt.label}</span>
+                </label>
+              );
+            })}
+          </div>
+          <p style={{ color: 'var(--text-light)', fontSize: '0.85rem', marginTop: '0.4rem' }}>
+            Tip: choose all that could realistically reach you given road or flood conditions.
+          </p>
+        </div>
         <h2>Emergency Help Request</h2>
         <p style={{ color: 'var(--emergency-red)', fontWeight: 'bold' }}>
           Send your location and situation to nearby rescuers
@@ -61,6 +132,43 @@ const NeedHelp = ({ onSubmitRequest }) => {
             required
             rows={4}
           />
+        </div>
+
+        <div style={{ marginBottom: '1.5rem' }}>
+          <label style={{ 
+            display: 'block', 
+            marginBottom: '0.5rem', 
+            fontWeight: '600',
+            color: 'var(--text-dark)'
+          }}>
+            Optional: attach a photo for verification
+          </label>
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={(e) => {
+              const file = e.target.files?.[0] || null;
+              setImageFile(file);
+              setUploadError('');
+              if (file) {
+                const reader = new FileReader();
+                reader.onload = () => setImagePreview(reader.result);
+                reader.readAsDataURL(file);
+              } else {
+                setImagePreview('');
+              }
+            }}
+            style={{ display: 'block' }}
+          />
+          {imagePreview && (
+            <div style={{ marginTop: '0.5rem' }}>
+              <img src={imagePreview} alt="Preview" style={{ maxWidth: '100%', borderRadius: 8, border: '1px solid var(--border-light)' }} />
+            </div>
+          )}
+          {uploadError && (
+            <p style={{ color: 'var(--emergency-red)', marginTop: '0.5rem' }}>{uploadError}</p>
+          )}
         </div>
         
         <div style={{ marginBottom: '1.5rem' }}>

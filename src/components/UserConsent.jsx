@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import 'ol/ol.css';
-import { Map as OLMap, View } from 'ol';
+import OLMap from 'ol/Map';
+import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
-import { OSM } from 'ol/source';
+import OSM from 'ol/source/OSM';
 import { toLonLat, fromLonLat } from 'ol/proj';
+import Overlay from 'ol/Overlay';
 
 const UserConsent = ({ onConsent }) => {
   const [location, setLocation] = useState(null);
@@ -14,6 +16,20 @@ const UserConsent = ({ onConsent }) => {
   const [manualLon, setManualLon] = useState('');
   const pickMapRef = useRef(null);
   const pickMap = useRef(null);
+  const markerElRef = useRef(null);
+  const markerOverlayRef = useRef(null);
+  const [selectedPlace, setSelectedPlace] = useState('');
+
+  const safeUpdateSize = () => {
+    try {
+      if (pickMap.current && typeof pickMap.current.updateSize === 'function') {
+        pickMap.current.updateSize();
+      }
+    } catch (err) {
+      // ignore sizing errors
+      void err;
+    }
+  };
 
   const isManualValid =
     manualLat !== '' && manualLon !== '' &&
@@ -28,10 +44,11 @@ const UserConsent = ({ onConsent }) => {
     setIsLoading(true);
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setLocation({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        });
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+        setLocation({ latitude: lat, longitude: lon });
+        setManualLat(String(lat));
+        setManualLon(String(lon));
         setError('');
         setIsLoading(false);
       },
@@ -48,79 +65,7 @@ const UserConsent = ({ onConsent }) => {
     );
   };
 
-  const requestIPLocation = async () => {
-    try {
-      setIsLoading(true);
-      setError('');
-
-      const fetchWithTimeout = (url, ms = 5000) => {
-        const ctrl = new AbortController();
-        const id = setTimeout(() => ctrl.abort(), ms);
-        return fetch(url, { signal: ctrl.signal, mode: 'cors' })
-          .finally(() => clearTimeout(id));
-      };
-
-      const tryIpinfo = async () => {
-        const res = await fetchWithTimeout('https://ipinfo.io/json');
-        if (!res.ok) throw new Error('ipinfo failed');
-        const data = await res.json();
-        if (data && data.loc) {
-          const [latStr, lonStr] = String(data.loc).split(',');
-          const lat = Number(latStr);
-          const lon = Number(lonStr);
-          if (!Number.isNaN(lat) && !Number.isNaN(lon)) return { lat, lon };
-        }
-        throw new Error('ipinfo no coords');
-      };
-
-      const tryIpwho = async () => {
-        const res = await fetchWithTimeout('https://ipwho.is/');
-        if (!res.ok) throw new Error('ipwho.is failed');
-        const data = await res.json();
-        if (data && data.success && typeof data.latitude === 'number' && typeof data.longitude === 'number') {
-          return { lat: data.latitude, lon: data.longitude };
-        }
-        throw new Error('ipwho.is no coords');
-      };
-
-      const tryIpapi = async () => {
-        const res = await fetchWithTimeout('https://ipapi.co/json/');
-        if (!res.ok) throw new Error('ipapi.co failed');
-        const data = await res.json();
-        if (typeof data.latitude === 'number' && typeof data.longitude === 'number') {
-          return { lat: data.latitude, lon: data.longitude };
-        }
-        if (data && data.loc) {
-          const [latStr, lonStr] = String(data.loc).split(',');
-          const lat = Number(latStr);
-          const lon = Number(lonStr);
-          if (!Number.isNaN(lat) && !Number.isNaN(lon)) return { lat, lon };
-        }
-        throw new Error('ipapi.co no coords');
-      };
-
-      let coords = null;
-      const providers = [tryIpinfo, tryIpwho, tryIpapi];
-      for (const p of providers) {
-        try {
-          coords = await p();
-          if (coords) break;
-        } catch {
-          // continue to next provider
-        }
-      }
-
-      if (!coords) throw new Error('All IP providers failed or blocked by CORS');
-
-      setLocation({ latitude: coords.lat, longitude: coords.lon });
-      setManualLat(String(coords.lat));
-      setManualLon(String(coords.lon));
-    } catch {
-      setError('Unable to retrieve approximate location (CORS or network). Please use the map picker below.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Removed IP-based approximate location due to accuracy concerns
 
   useEffect(() => {
     requestLocation();
@@ -134,7 +79,7 @@ const UserConsent = ({ onConsent }) => {
           setPermissionState(p.state);
           p.onchange = () => setPermissionState(p.state);
         })
-        .catch(() => {});
+        .catch(() => null);
     }
   }, []);
 
@@ -143,9 +88,23 @@ const UserConsent = ({ onConsent }) => {
     if (!pickMapRef.current || pickMap.current) return;
     pickMap.current = new OLMap({
       target: pickMapRef.current,
-      layers: [new TileLayer({ source: new OSM() })],
+      layers: [new TileLayer({ source: new OSM({ crossOrigin: 'anonymous' }) })],
       view: new View({ center: fromLonLat([121.0, 12.0]), zoom: 5 })
     });
+
+    // Ensure size is calculated after render
+    setTimeout(() => { safeUpdateSize(); }, 0);
+
+    // Create a simple marker overlay
+    markerElRef.current = document.createElement('div');
+    markerElRef.current.className = 'marker-pin';
+    markerElRef.current.textContent = '📍';
+    markerOverlayRef.current = new Overlay({
+      element: markerElRef.current,
+      positioning: 'bottom-center',
+      stopEvent: false,
+    });
+    pickMap.current.addOverlay(markerOverlayRef.current);
 
     pickMap.current.on('click', (evt) => {
       const [lon, lat] = toLonLat(evt.coordinate);
@@ -153,12 +112,99 @@ const UserConsent = ({ onConsent }) => {
       setManualLon(String(lon.toFixed(6)));
       setLocation({ latitude: Number(lat), longitude: Number(lon) });
       setError('');
+      if (markerOverlayRef.current) {
+        markerOverlayRef.current.setPosition(evt.coordinate);
+      }
+      // Fetch a human-readable place name
+      reverseGeocode(lat, lon);
     });
 
     return () => {
-      if (pickMap.current) pickMap.current.setTarget(null);
+      if (pickMap.current) {
+        try { pickMap.current.setTarget(null); } catch (err) { void err; }
+        // Reset ref so React StrictMode re-mount can re-initialize the map
+        pickMap.current = null;
+      }
     };
   }, []);
+
+  // Keep map sized on window resize
+  useEffect(() => {
+    const onResize = () => { safeUpdateSize(); };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // Aggressively ensure OpenLayers computes size after initial render cycles
+  useEffect(() => {
+    let frames = [];
+    for (let i = 0; i < 5; i++) {
+      const id = requestAnimationFrame(() => { safeUpdateSize(); });
+      frames.push(id);
+    }
+    const onLoad = () => { safeUpdateSize(); };
+    window.addEventListener('load', onLoad);
+    return () => {
+      frames.forEach((id) => cancelAnimationFrame(id));
+      window.removeEventListener('load', onLoad);
+    };
+  }, []);
+
+  // Observe container size changes to trigger OpenLayers updateSize
+  useEffect(() => {
+    if (!pickMapRef.current) return;
+    let ro;
+    try {
+      ro = new ResizeObserver(() => { safeUpdateSize(); });
+      ro.observe(pickMapRef.current);
+    } catch (err) { void err; }
+    return () => {
+      try { ro && ro.disconnect(); } catch (err) { void err; }
+    };
+  }, []);
+
+  // Reflect location changes on the map in real time
+  useEffect(() => {
+    if (!pickMap.current || !location) return;
+    const center = fromLonLat([location.longitude, location.latitude]);
+    markerOverlayRef.current?.setPosition(center);
+    try { pickMap.current.getView().animate({ center, zoom: 15, duration: 500 }); } catch (err) { void err; }
+    // keep manual fields in sync
+    setManualLat(String(location.latitude.toFixed(6)));
+    setManualLon(String(location.longitude.toFixed(6)));
+    // update display name
+    reverseGeocode(location.latitude, location.longitude);
+  }, [location]);
+
+  // When manual coordinates are valid, reflect them to location (and map)
+  useEffect(() => {
+    if (!isManualValid) return;
+    const lat = Number(manualLat);
+    const lon = Number(manualLon);
+    if (
+      location &&
+      Math.abs(location.latitude - lat) < 1e-6 &&
+      Math.abs(location.longitude - lon) < 1e-6
+    ) {
+      return;
+    }
+    setLocation({ latitude: lat, longitude: lon });
+  }, [manualLat, manualLon, isManualValid, location]);
+
+  const reverseGeocode = async (lat, lon) => {
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`;
+      const res = await fetch(url, { headers: { 'Accept-Language': 'en' }, mode: 'cors' });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && data.display_name) {
+        setSelectedPlace(data.display_name);
+      }
+    } catch (err) { void err; }
+  };
+
+
+  // Place search removed per request
 
   const handleConsent = () => {
     if (location) {
@@ -212,18 +258,24 @@ const UserConsent = ({ onConsent }) => {
 
       {error && <div className="error">{error}</div>}
 
-      <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', marginBottom: '1rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>
         <button type="button" onClick={requestLocation} className="proceed-button" style={{ maxWidth: 240 }}>
           🔁 Try Again
         </button>
-        <button type="button" onClick={requestIPLocation} className="proceed-button" style={{ maxWidth: 280 }}>
-          🌐 Use Approximate Location (IP)
-        </button>
       </div>
+
+      {/* Overlays for stores and house names removed per request */}
+
+      {/* Place search removed per request */}
 
       <div style={{ width: '100%', maxWidth: 600, margin: '0 auto 1rem', textAlign: 'left' }}>
         <p style={{ color: 'var(--text-light)', textAlign: 'center' }}>Or tap the map to set your location</p>
         <div ref={pickMapRef} className="map-picker"></div>
+        {selectedPlace && (
+          <p className="selected-place" style={{ marginTop: '0.5rem', textAlign: 'center' }}>
+            Selected: {selectedPlace}
+          </p>
+        )}
       </div>
 
       <div style={{ width: '100%', maxWidth: 480, margin: '0 auto 1rem', textAlign: 'left' }}>

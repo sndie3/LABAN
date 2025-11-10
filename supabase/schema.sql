@@ -10,6 +10,7 @@ create table if not exists public.help_requests (
   longitude double precision,
   region text,
   status text default 'open',
+  image_url text,
   created_at timestamp with time zone default now(),
   updated_at timestamp with time zone default now()
 );

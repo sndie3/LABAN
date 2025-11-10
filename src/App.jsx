@@ -6,6 +6,7 @@ import RoleSelection from './components/RoleSelection';
 import MapComponent from './components/Map';
 import HelpRequestsList from './components/HelpRequestsList';
 import NeedHelp from './components/NeedHelp';
+import WaterLevelWidget from './components/WaterLevelWidget';
 import './App.css';
 
 // Helper function to determine region from coordinates
@@ -23,6 +24,15 @@ function App() {
   const [region, setRegion] = useState(null);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [helpRequests, setHelpRequests] = useState([]);
+  const [vehicleType, setVehicleType] = useState('car');
+  // When a request is selected, auto-select vehicle type if there is exactly one recommendation
+  useEffect(() => {
+    if (!selectedRequest) return;
+    const recs = Array.isArray(selectedRequest.access_vehicles) ? selectedRequest.access_vehicles : [];
+    if (recs.length === 1) {
+      setVehicleType(recs[0]);
+    }
+  }, [selectedRequest]);
 
   useEffect(() => {
     if (location) {
@@ -122,7 +132,12 @@ function App() {
     setUserRole(role);
   };
 
-  const handleHelpRequest = async (message) => {
+  // Removed auto-open image modal overlay; Map component shows an anchored card instead
+
+  const handleHelpRequest = async (input) => {
+    const message = typeof input === 'string' ? input : input?.message;
+    const imageUrl = typeof input === 'object' && input ? input.imageUrl || null : null;
+    const accessVehicles = typeof input === 'object' && input ? input.accessVehicles || [] : [];
     const fullName = user?.firstName
       ? `${user.firstName} ${user.lastName || ''}`.trim()
       : 'Civilian';
@@ -134,6 +149,8 @@ function App() {
       longitude: location?.longitude,
       region,
       status: 'open',
+      image_url: imageUrl,
+      access_vehicles: accessVehicles,
     };
     if (supabase) {
       const { data, error } = await supabase
@@ -190,6 +207,9 @@ function App() {
                   You're now connected to the LABAN network in {region}
                 </p>
               </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <WaterLevelWidget location={location} region={region} />
+              </div>
               <NeedHelp onSubmitRequest={handleHelpRequest} />
             </div>
           ) : (
@@ -201,11 +221,12 @@ function App() {
                     You're now connected to the LABAN network in {region}
                   </p>
                 </div>
-                <HelpRequestsList
-                  requests={helpRequests.filter((r) => (r.region || (r.location?.latitude != null ? getRegionFromCoordinates(Number(r.location.latitude)) : null)) === region)}
-                  rescuerLocation={location}
-                  onSelect={(req) => setSelectedRequest(req)}
-                />
+                <WaterLevelWidget location={location} region={region} />
+              <HelpRequestsList
+                requests={helpRequests.filter((r) => (r.region || (r.location?.latitude != null ? getRegionFromCoordinates(Number(r.location.latitude)) : null)) === region)}
+                rescuerLocation={location}
+                onSelect={(req) => setSelectedRequest(req)}
+              />
               </div>
               <div className="right-panel">
                 <div className="map-container">
@@ -214,6 +235,7 @@ function App() {
                     helpRequests={helpRequests.filter((r) => (r.region || (r.location?.latitude != null ? getRegionFromCoordinates(Number(r.location.latitude)) : null)) === region)}
                     rescuerLocation={location}
                     selectedRequest={selectedRequest}
+                    vehicleType={vehicleType}
                   />
                 </div>
               </div>
