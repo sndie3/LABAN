@@ -32,8 +32,15 @@ const NeedHelp = ({ onSubmitRequest }) => {
           } else {
             setUploadError('Image upload failed. Sending without photo.');
           }
-        } catch {
-          setUploadError('Image upload failed. Sending without photo.');
+        } catch (err) {
+          console.error('Image upload error:', err);
+          if (err.message?.includes('bucket')) {
+            setUploadError('Image storage not available. Sending without photo.');
+          } else if (err.message?.includes('network')) {
+            setUploadError('Network error during upload. Sending without photo.');
+          } else {
+            setUploadError('Image upload failed. Sending without photo.');
+          }
         }
       }
 

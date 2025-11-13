@@ -41,34 +41,55 @@ const UserConsent = ({ onConsent }) => {
       setIsLoading(false);
       return;
     }
+    
     setIsLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const lat = position.coords.latitude;
-        const lon = position.coords.longitude;
-        setLocation({ latitude: lat, longitude: lon });
-        setManualLat(String(lat));
-        setManualLon(String(lon));
-        setError('');
-        setIsLoading(false);
-      },
-      (err) => {
-        const msg = err?.message || 'Unable to get your location';
-        setError(msg);
-        setIsLoading(false);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 0,
-      }
-    );
+    setError('');
+    
+    // Try to get location with multiple attempts
+    const attemptGeolocation = (useHighAccuracy) => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const lat = position.coords.latitude;
+          const lon = position.coords.longitude;
+          setLocation({ latitude: lat, longitude: lon });
+          setManualLat(String(lat));
+          setManualLon(String(lon));
+          setError('');
+          setIsLoading(false);
+        },
+        () => {
+          if (useHighAccuracy) {
+            // If high accuracy fails, try low accuracy
+            attemptGeolocation(false);
+          } else {
+            // If both fail, show manual options
+            setError('Unable to get your location. Please tap the map or enter coordinates.');
+            setIsLoading(false);
+          }
+        },
+        {
+          enableHighAccuracy: useHighAccuracy,
+          timeout: useHighAccuracy ? 10000 : 5000,
+          maximumAge: useHighAccuracy ? 0 : 300000,
+        }
+      );
+    };
+    
+    // Start with high accuracy
+    attemptGeolocation(true);
   };
 
   // Removed IP-based approximate location due to accuracy concerns
 
   useEffect(() => {
-    requestLocation();
+    // Request user's actual location
+    if (navigator.geolocation) {
+      requestLocation();
+    } else {
+      // If no geolocation, show manual options immediately
+      setIsLoading(false);
+      setError('Geolocation not available. Please tap the map or enter coordinates.');
+    }
   }, []);
 
   useEffect(() => {
@@ -231,38 +252,34 @@ const UserConsent = ({ onConsent }) => {
       </div>
       
       {isLoading && (
-        <div style={{ textAlign: 'center', margin: '2rem 0' }}>
+        <div style={{ textAlign: 'center', margin: '1rem 0' }}>
           <div className="loading"></div>
-          <p style={{ marginTop: '1rem', color: 'var(--text-light)' }}>
+          <p style={{ color: 'var(--text-light)', fontSize: '0.9rem', marginTop: '0.5rem' }}>
             Getting your location...
           </p>
         </div>
       )}
       
       {location && (
-        <div className="location-info">
-          <h3>📍 Location Detected</h3>
-          <p><strong>Latitude:</strong> {location.latitude.toFixed(6)}</p>
-          <p><strong>Longitude:</strong> {location.longitude.toFixed(6)}</p>
-          <p style={{ fontSize: '0.8rem', marginTop: '0.5rem', opacity: 0.8 }}>
-            Your location will help rescuers find you faster
+        <div className="location-info" style={{ textAlign: 'center', margin: '1rem 0' }}>
+          <p style={{ fontSize: '0.9rem', color: 'var(--text-light)' }}>
+            📍 Location: {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
           </p>
+          {!isLoading && (
+            <p style={{ fontSize: '0.8rem', marginTop: '0.5rem', opacity: 0.8 }}>
+              Tap the map to adjust your location
+            </p>
+          )}
         </div>
       )}
       
-      {permissionState && (
-        <p style={{ color: 'var(--text-light)', fontSize: '0.9rem' }}>
-          Location permission: {permissionState}. If denied, enable location access in your browser settings and try again.
+      {permissionState === 'denied' && (
+        <p style={{ color: 'var(--error-red)', fontSize: '0.9rem', textAlign: 'center' }}>
+          Location access denied. Tap the map to set your location manually.
         </p>
       )}
 
-      {error && <div className="error">{error}</div>}
-
-      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>
-        <button type="button" onClick={requestLocation} className="proceed-button" style={{ maxWidth: 240 }}>
-          🔁 Try Again
-        </button>
-      </div>
+      {error && <div className="error" style={{ textAlign: 'center', margin: '1rem 0' }}>{error}</div>}
 
       {/* Overlays for stores and house names removed per request */}
 
@@ -279,32 +296,23 @@ const UserConsent = ({ onConsent }) => {
       </div>
 
       <div style={{ width: '100%', maxWidth: 480, margin: '0 auto 1rem', textAlign: 'left' }}>
-        <p style={{ color: 'var(--text-light)', textAlign: 'center' }}>Or enter your location manually</p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+        <p style={{ color: 'var(--text-light)', textAlign: 'center', fontSize: '0.9rem' }}>Or enter coordinates manually</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
           <input
             type="text"
-            placeholder="Latitude"
+            placeholder="Latitude (e.g. 14.5995)"
             value={manualLat}
             onChange={(e) => setManualLat(e.target.value)}
-            style={{ padding: '0.75rem', borderRadius: 8, border: '1px solid var(--border-light)' }}
+            style={{ padding: '0.5rem', borderRadius: 6, border: '1px solid var(--border-light)', fontSize: '0.9rem' }}
           />
           <input
             type="text"
-            placeholder="Longitude"
+            placeholder="Longitude (e.g. 120.9842)"
             value={manualLon}
             onChange={(e) => setManualLon(e.target.value)}
-            style={{ padding: '0.75rem', borderRadius: 8, border: '1px solid var(--border-light)' }}
+            style={{ padding: '0.5rem', borderRadius: 6, border: '1px solid var(--border-light)', fontSize: '0.9rem' }}
           />
         </div>
-        {isManualValid ? (
-          <p style={{ color: 'var(--success-green)', fontSize: '0.85rem', marginTop: '0.5rem', textAlign: 'center' }}>
-            Manual coordinates look valid.
-          </p>
-        ) : (
-          <p style={{ color: 'var(--text-light)', fontSize: '0.85rem', marginTop: '0.5rem', textAlign: 'center' }}>
-            Format example: Latitude 10.3157, Longitude 123.8854
-          </p>
-        )}
       </div>
       
       <button
@@ -312,7 +320,7 @@ const UserConsent = ({ onConsent }) => {
         className="proceed-button"
         disabled={isLoading || (!location && !isManualValid)}
       >
-        {isLoading ? 'Getting Location...' : '✅ Continue to Safety'}
+        ✅ Continue to Safety
       </button>
       
       <div style={{ 

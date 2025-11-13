@@ -1,5 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import supabase from './lib/supabaseClient';
+import React, { useState, useEffect, useMemo } from 'react';
+import offlineSupabase from './lib/offlineSupabaseClient';
+import { registerServiceWorker, setupBackgroundSync } from './lib/serviceWorker';
+import localMeshNetwork from './lib/localMeshNetwork';
+import OfflineIndicator from './components/OfflineIndicator';
 import UserConsent from './components/UserConsent';
 import UserInfo from './components/UserInfo';
 import RoleSelection from './components/RoleSelection';
@@ -7,6 +10,7 @@ import MapComponent from './components/Map';
 import HelpRequestsList from './components/HelpRequestsList';
 import NeedHelp from './components/NeedHelp';
 import WaterLevelWidget from './components/WaterLevelWidget';
+import LocalMeshIndicator from './components/LocalMeshIndicator';
 import './App.css';
 
 // Helper function to determine region from coordinates
@@ -25,6 +29,15 @@ function App() {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [helpRequests, setHelpRequests] = useState([]);
   const [vehicleType, setVehicleType] = useState('car');
+
+  // Memoize region-filtered requests to avoid duplicate filtering
+  const regionHelpRequests = useMemo(() => {
+    return helpRequests.filter((r) => {
+      const requestRegion = r.region || (r.location?.latitude != null ? getRegionFromCoordinates(Number(r.location.latitude)) : null);
+      return requestRegion === region;
+    });
+  }, [helpRequests, region]);
+
   // When a request is selected, auto-select vehicle type if there is exactly one recommendation
   useEffect(() => {
     if (!selectedRequest) return;
@@ -41,14 +54,29 @@ function App() {
     }
   }, [location]);
 
+  // Initialize service worker and offline sync
+  useEffect(() => {
+    registerServiceWorker();
+    setupBackgroundSync();
+  }, []);
+
   // Fetch existing requests and subscribe to realtime inserts
   useEffect(() => {
-    if (!supabase) return;
+    let subscription = null;
+    let interval = null;
+
     const load = async () => {
-      const { data, error } = await supabase
-        .from('help_requests')
-        .select('*')
-        .order('created_at', { ascending: false });
+      if (!offlineSupabase) {
+        console.warn('Supabase client not available - using offline mode');
+        return;
+      }
+      
+      const { data, error } = await offlineSupabase
+        .select('help_requests', { 
+          select: '*',
+          order: ['created_at', false] // false for descending
+        });
+        
       if (!error && data) {
         // Normalize: coerce latitude/longitude (which may be strings) to numbers
         const normalized = data.map((row) => {
@@ -63,35 +91,122 @@ function App() {
           };
         });
         setHelpRequests(normalized);
+      } else if (error) {
+        console.error('Failed to fetch help requests:', error);
       }
     };
-    load();
 
-    const channel = supabase
-      .channel('public:help_requests')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'help_requests' },
-        (payload) =>
-          setHelpRequests((prev) => {
-            const lat = Number(payload.new.latitude);
-            const lon = Number(payload.new.longitude);
-            const hasCoords = !Number.isNaN(lat) && !Number.isNaN(lon);
-            return [
-              {
-                ...payload.new,
-                location: payload.new.location || (hasCoords ? { latitude: lat, longitude: lon } : null),
-              },
-              ...prev,
-            ];
-          })
-      )
-      .subscribe();
+    const setupRealtimeSubscription = () => {
+      if (subscription) {
+        offlineSupabase.removeChannel?.(subscription);
+        subscription = null;
+      }
+
+      if (offlineSupabase?.getConnectionStatus()?.online) {
+        subscription = offlineSupabase
+          .channel('public:help_requests')
+          .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'help_requests' },
+            (payload) => {
+              const lat = Number(payload.new.latitude);
+              const lon = Number(payload.new.longitude);
+              const hasCoords = !Number.isNaN(lat) && !Number.isNaN(lon);
+              setHelpRequests((prev) => [
+                {
+                  ...payload.new,
+                  location: payload.new.location || (hasCoords ? { latitude: lat, longitude: lon } : null),
+                },
+                ...prev,
+              ]);
+            }
+          )
+          .subscribe();
+        console.log('Real-time subscription established');
+      }
+    };
+
+    // Handle incoming local mesh requests
+    const handleLocalMeshRequest = (localRequests) => {
+      console.log(`[App] Received ${localRequests.length} local mesh requests`);
+      
+      // Filter requests that are nearby and relevant
+      const relevantRequests = localRequests.filter(req => {
+        if (!req.latitude || !req.longitude || !location) return false;
+        
+        // Calculate distance (simplified)
+        const distance = Math.sqrt(
+          Math.pow(req.latitude - location.latitude, 2) + 
+          Math.pow(req.longitude - location.longitude, 2)
+        ) * 111000; // Convert to meters (approximate)
+        
+        return distance <= 1000; // Within 1km
+      });
+
+      if (relevantRequests.length > 0) {
+        setHelpRequests(prev => {
+          // Merge with existing requests, avoiding duplicates
+          const existingIds = new Set(prev.map(r => r.id));
+          const newRequests = relevantRequests.filter(r => !existingIds.has(r.id));
+          
+          if (newRequests.length > 0) {
+            return [...newRequests, ...prev];
+          }
+          return prev;
+        });
+      }
+    };
+
+    // Initial load and subscription setup
+    load();
+    setupRealtimeSubscription();
+
+    // Start local mesh network for offline sharing
+    if (location && userRole === 'Rescuer') {
+      localMeshNetwork.updateLocation(location);
+      localMeshNetwork.addListener(handleLocalMeshRequest);
+      localMeshNetwork.start(location);
+      localMeshNetwork.listenForIncomingData();
+    }
+
+    // Handle connection changes
+    const handleConnectionRestored = () => {
+      console.log('Connection restored - refreshing data and subscriptions');
+      load();
+      setupRealtimeSubscription();
+    };
+
+    const handleConnectionLost = () => {
+      console.log('Connection lost - cleaning up subscriptions, switching to local mesh');
+      if (subscription) {
+        offlineSupabase.removeChannel?.(subscription);
+        subscription = null;
+      }
+    };
+
+    window.addEventListener('connection-restored', handleConnectionRestored);
+    window.addEventListener('connection-lost', handleConnectionLost);
+
+    // Fallback: periodic polling when offline
+    interval = setInterval(() => {
+      if (!offlineSupabase?.getConnectionStatus()?.online) {
+        load(); // Refresh from local cache when offline
+      }
+    }, 30000); // Poll every 30 seconds
 
     return () => {
-      supabase.removeChannel(channel);
+      if (subscription) {
+        offlineSupabase.removeChannel?.(subscription);
+      }
+      if (interval) {
+        clearInterval(interval);
+      }
+      localMeshNetwork.removeListener(handleLocalMeshRequest);
+      localMeshNetwork.stop();
+      window.removeEventListener('connection-restored', handleConnectionRestored);
+      window.removeEventListener('connection-lost', handleConnectionLost);
     };
-  }, []);
+  }, [location, userRole]);
 
   const handleConsent = (userLocation) => {
     setLocation(userLocation);
@@ -120,7 +235,9 @@ function App() {
     return () => {
       try {
         navigator.geolocation.clearWatch(watchId);
-      } catch {}
+      } catch (error) {
+        console.warn('Error clearing geolocation watch:', error);
+      }
     };
   }, [consent]);
 
@@ -152,25 +269,10 @@ function App() {
       image_url: imageUrl,
       access_vehicles: accessVehicles,
     };
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('help_requests')
-        .insert([payload])
-        .select('*')
-        .single();
-      if (!error && data) {
-        const lat = Number(data.latitude);
-        const lon = Number(data.longitude);
-        const hasCoords = !Number.isNaN(lat) && !Number.isNaN(lon);
-        const normalized = {
-          ...data,
-          location: data.location || (hasCoords ? { latitude: lat, longitude: lon } : null),
-          region: data.region || (hasCoords ? getRegionFromCoordinates(lat) : region),
-        };
-        setHelpRequests((prev) => [normalized, ...prev]);
-      }
-    } else {
-      // Fallback to local state when Supabase isn’t configured
+    
+    if (!offlineSupabase) {
+      console.warn('Supabase client not available - storing locally only');
+      // Fallback to local state when Supabase isn't configured
       const local = {
         id: Date.now(),
         timestamp: new Date().toISOString(),
@@ -178,11 +280,57 @@ function App() {
         location: { latitude: payload.latitude, longitude: payload.longitude },
       };
       setHelpRequests((prev) => [local, ...prev]);
+      
+      // Share through local mesh network
+      localMeshNetwork.storeLocalRequest(local);
+      
+      alert('Help request saved locally and shared with nearby devices. (Note: Cloud sync not available)');
+      return;
+    }
+    
+    const { data, error } = await offlineSupabase
+      .insert('help_requests', [payload]);
+      
+    if (!error && data) {
+      const lat = Number(data.latitude);
+      const lon = Number(data.longitude);
+      const hasCoords = !Number.isNaN(lat) && !Number.isNaN(lon);
+      const normalized = {
+        ...data,
+        location: data.location || (hasCoords ? { latitude: lat, longitude: lon } : null),
+        region: data.region || (hasCoords ? getRegionFromCoordinates(lat) : region),
+      };
+      setHelpRequests((prev) => [normalized, ...prev]);
+      
+      // Share through local mesh network
+      localMeshNetwork.storeLocalRequest(normalized);
+      
+      // Show success feedback
+      alert('Help request sent successfully! Rescuers in your area have been notified.');
+    } else {
+      // Handle errors - offlineSupabase will automatically store locally if offline
+      console.error('Failed to submit help request:', error);
+      
+      // Still add to local state for immediate visibility
+      const local = {
+        id: Date.now(),
+        timestamp: new Date().toISOString(),
+        ...payload,
+        location: { latitude: payload.latitude, longitude: payload.longitude },
+      };
+      setHelpRequests((prev) => [local, ...prev]);
+      
+      // Share through local mesh network
+      localMeshNetwork.storeLocalRequest(local);
+      
+      alert('Unable to send help request. It has been saved locally and shared with nearby devices. It will sync when connection returns.');
     }
   };
 
   return (
     <div className="App">
+      <LocalMeshIndicator />
+      <OfflineIndicator />
       <header className="app-header">
         <h1 className="app-title">🌊 LABAN</h1>
         <p className="app-subtitle">Disaster Response & Rescue Coordination Platform</p>
@@ -223,7 +371,7 @@ function App() {
                 </div>
                 <WaterLevelWidget location={location} region={region} />
               <HelpRequestsList
-                requests={helpRequests.filter((r) => (r.region || (r.location?.latitude != null ? getRegionFromCoordinates(Number(r.location.latitude)) : null)) === region)}
+                requests={regionHelpRequests}
                 rescuerLocation={location}
                 onSelect={(req) => setSelectedRequest(req)}
               />
@@ -232,7 +380,7 @@ function App() {
                 <div className="map-container">
                   <MapComponent
                     region={region}
-                    helpRequests={helpRequests.filter((r) => (r.region || (r.location?.latitude != null ? getRegionFromCoordinates(Number(r.location.latitude)) : null)) === region)}
+                    helpRequests={regionHelpRequests}
                     rescuerLocation={location}
                     selectedRequest={selectedRequest}
                     vehicleType={vehicleType}

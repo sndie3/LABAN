@@ -57,9 +57,13 @@ const MapComponent = ({ region, helpRequests, rescuerLocation, selectedRequest, 
     });
 
     return () => {
-      try { map.current && map.current.setTarget(null); } catch {}
+      try { map.current && map.current.setTarget(null); } catch (error) {
+        console.warn('Error cleaning up map target:', error);
+      }
       if (photoOverlayRef.current && map.current) {
-        try { map.current.removeOverlay(photoOverlayRef.current); } catch {}
+        try { map.current.removeOverlay(photoOverlayRef.current); } catch (error) {
+          console.warn('Error removing photo overlay:', error);
+        }
       }
       photoOverlayRef.current = null;
       photoElRef.current = null;
@@ -167,7 +171,9 @@ const MapComponent = ({ region, helpRequests, rescuerLocation, selectedRequest, 
     if (!map.current) return;
     // Remove existing overlay when selection changes
     if (photoOverlayRef.current) {
-      try { map.current.removeOverlay(photoOverlayRef.current); } catch {}
+      try { map.current.removeOverlay(photoOverlayRef.current); } catch (error) {
+        console.warn('Error removing existing overlay:', error);
+      }
       photoOverlayRef.current = null;
       photoElRef.current = null;
     }
@@ -242,7 +248,9 @@ const MapComponent = ({ region, helpRequests, rescuerLocation, selectedRequest, 
     closeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (photoOverlayRef.current && map.current) {
-        try { map.current.removeOverlay(photoOverlayRef.current); } catch {}
+        try { map.current.removeOverlay(photoOverlayRef.current); } catch (error) {
+          console.warn('Error removing overlay on close:', error);
+        }
       }
       photoOverlayRef.current = null;
       photoElRef.current = null;
@@ -393,7 +401,6 @@ const MapComponent = ({ region, helpRequests, rescuerLocation, selectedRequest, 
             const staleHours = 72; // ignore reports older than 3 days
             let newestRelevant = null;
             for (const rep of data) {
-              const status = (rep.status || '').toLowerCase();
               const sLon = Number(rep.start_lon);
               const sLat = Number(rep.start_lat);
               const eLon = Number(rep.end_lon);
@@ -413,16 +420,18 @@ const MapComponent = ({ region, helpRequests, rescuerLocation, selectedRequest, 
               }
             }
             if (newestRelevant) {
-              const status = (newestRelevant.status || '').toLowerCase();
-              if (status === 'clear') {
+              const newestStatus = (newestRelevant.status || '').toLowerCase();
+              if (newestStatus === 'clear') {
                 finalStatus = 'usable';
               } else {
-                const affects = vehicleType === 'boat' ? status === 'blocked' : (status === 'blocked' || status === 'flooded');
+                const affects = vehicleType === 'boat' ? newestStatus === 'blocked' : (newestStatus === 'blocked' || newestStatus === 'flooded');
                 finalStatus = affects ? 'unavailable' : 'usable';
               }
             }
           }
-        } catch {}
+        } catch (error) {
+          console.warn('Error fetching road reports:', error);
+        }
       }
       updateRoadBadge(finalStatus);
     }).catch(() => {
